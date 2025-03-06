@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="mb-4">Settings</h1>
+    
+    <!-- Data Source Settings -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Data Source Configuration</h5>
+                    <form id="data-source-form">
+                        <div class="mb-3">
+                            <label class="form-label">Data Source</label>
+                            <select class="form-select" id="data-source">
+                                <option value="csv">CSV File</option>
+                                <option value="kafka">Kafka Stream</option>
+                                <option value="simulation">Real-time Simulation</option>
+                            </select>
+                        </div>
+                        
+                        <!-- CSV Settings -->
+                        <div id="csv-settings">
+                            <div class="mb-3">
+                                <label class="form-label">CSV File Path</label>
+                                <input type="text" class="form-control" id="csv-path" value="simulation_donnees_batiments_nombre_pieces.csv">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Update Interval (seconds)</label>
+                                <input type="number" class="form-control" id="csv-interval" value="5" min="1">
+                            </div>
+                        </div>
+                        
+                        <!-- Kafka Settings -->
+                        <div id="kafka-settings" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">Kafka Broker</label>
+                                <input type="text" class="form-control" id="kafka-broker" value="localhost:9092">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Topic</label>
+                                <input type="text" class="form-control" id="kafka-topic" value="smart_home_data">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Consumer Group</label>
+                                <input type="text" class="form-control" id="kafka-group" value="smart_home_group">
+                            </div>
+                        </div>
+                        
+                        <!-- Simulation Settings -->
+                        <div id="simulation-settings" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">Number of Buildings</label>
+                                <input type="number" class="form-control" id="sim-buildings" value="10" min="1">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Data Generation Interval (seconds)</label>
+                                <input type="number" class="form-control" id="sim-interval" value="5" min="1">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Save Data Source Settings</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">ML Model Settings</h5>
+                    <form id="ml-settings-form">
+                        <div class="mb-3">
+                            <label class="form-label">Model Type</label>
+                            <select class="form-select" id="model-type">
+                                <option value="random_forest">Random Forest</option>
+                                <option value="neural_network">Neural Network</option>
+                                <option value="gradient_boost">Gradient Boosting</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Training Schedule</label>
+                            <select class="form-select" id="training-schedule">
+                                <option value="manual">Manual</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Model Save Path</label>
+                            <input type="text" class="form-control" id="model-path" value="models/">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save ML Settings</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Settings -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">User Settings</h5>
+                    <form id="user-settings-form">
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" value="{{ current_user.username }}" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new-password">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-control" id="confirm-password">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Update Password</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Display Settings</h5>
+                    <form id="display-settings-form">
+                        <div class="mb-3">
+                            <label class="form-label">Theme</label>
+                            <select class="form-select" id="theme">
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                                <option value="system">System Default</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Chart Update Interval (seconds)</label>
+                            <input type="number" class="form-control" id="chart-interval" value="5" min="1">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Temperature Unit</label>
+                            <select class="form-select" id="temp-unit">
+                                <option value="celsius">Celsius</option>
+                                <option value="fahrenheit">Fahrenheit</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Display Settings</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    // Show/hide settings based on data source
+    $('#data-source').change(function() {
+        const source = $(this).val();
+        $('#csv-settings, #kafka-settings, #simulation-settings').hide();
+        $(`#${source}-settings`).show();
+    });
+
+    // Handle data source settings
+    $('#data-source-form').submit(function(e) {
+        e.preventDefault();
+        
+        const data = {
+            source: $('#data-source').val(),
+            settings: {}
+        };
+
+        // Get settings based on source
+        switch(data.source) {
+            case 'csv':
+                data.settings = {
+                    path: $('#csv-path').val(),
+                    interval: $('#csv-interval').val()
+                };
+                break;
+            case 'kafka':
+                data.settings = {
+                    broker: $('#kafka-broker').val(),
+                    topic: $('#kafka-topic').val(),
+                    group: $('#kafka-group').val()
+                };
+                break;
+            case 'simulation':
+                data.settings = {
+                    buildings: $('#sim-buildings').val(),
+                    interval: $('#sim-interval').val()
+                };
+                break;
+        }
+
+        $.ajax({
+            url: '/api/save-data-source-settings',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(response) {
+                if (response.success) {
+                    alert('Data source settings saved successfully!');
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            }
+        });
+    });
+
+    // Handle ML settings
+    $('#ml-settings-form').submit(function(e) {
+        e.preventDefault();
+        
+        const data = {
+            model_type: $('#model-type').val(),
+            training_schedule: $('#training-schedule').val(),
+            model_path: $('#model-path').val()
+        };
+
+        $.ajax({
+            url: '/api/save-ml-settings',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(response) {
+                if (response.success) {
+                    alert('ML settings saved successfully!');
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            }
+        });
+    });
+
+    // Handle user settings
+    $('#user-settings-form').submit(function(e) {
+        e.preventDefault();
+        
+        const newPassword = $('#new-password').val();
+        const confirmPassword = $('#confirm-password').val();
+
+        if (newPassword !== confirmPassword) {
+            alert('Passwords do not match!');
+            return;
+        }
+
+        $.ajax({
+            url: '/api/update-password',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                new_password: newPassword
+            }),
+            success: function(response) {
+                if (response.success) {
+                    alert('Password updated successfully!');
+                    $('#new-password, #confirm-password').val('');
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            }
+        });
+    });
+
+    // Handle display settings
+    $('#display-settings-form').submit(function(e) {
+        e.preventDefault();
+        
+        const data = {
+            theme: $('#theme').val(),
+            chart_interval: $('#chart-interval').val(),
+            temp_unit: $('#temp-unit').val()
+        };
+
+        $.ajax({
+            url: '/api/save-display-settings',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(response) {
+                if (response.success) {
+                    alert('Display settings saved successfully!');
+                    if (data.theme !== 'system') {
+                        $('body').attr('data-theme', data.theme);
+                    }
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            }
+        });
+    });
+
+    // Load current settings
+    $.ajax({
+        url: '/api/get-settings',
+        method: 'GET',
+        success: function(response) {
+            // Data source settings
+            $('#data-source').val(response.data_source.source);
+            $('#data-source').trigger('change');
+            
+            if (response.data_source.settings) {
+                switch(response.data_source.source) {
+                    case 'csv':
+                        $('#csv-path').val(response.data_source.settings.path);
+                        $('#csv-interval').val(response.data_source.settings.interval);
+                        break;
+                    case 'kafka':
+                        $('#kafka-broker').val(response.data_source.settings.broker);
+                        $('#kafka-topic').val(response.data_source.settings.topic);
+                        $('#kafka-group').val(response.data_source.settings.group);
+                        break;
+                    case 'simulation':
+                        $('#sim-buildings').val(response.data_source.settings.buildings);
+                        $('#sim-interval').val(response.data_source.settings.interval);
+                        break;
+                }
+            }
+
+            // ML settings
+            $('#model-type').val(response.ml_settings.model_type);
+            $('#training-schedule').val(response.ml_settings.training_schedule);
+            $('#model-path').val(response.ml_settings.model_path);
+
+            // Display settings
+            $('#theme').val(response.display_settings.theme);
+            $('#chart-interval').val(response.display_settings.chart_interval);
+            $('#temp-unit').val(response.display_settings.temp_unit);
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="mb-4">Kafka Stream Status</h1>
+    
+    <!-- Kafka Connection Status -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Connection Status</h5>
+                    <div class="d-flex align-items-center mb-3">
+                        <div id="connection-indicator" class="me-2" style="width: 12px; height: 12px; border-radius: 50%; background-color: gray;"></div>
+                        <span id="connection-status">Checking connection...</span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Broker:</strong> <span id="broker-address">localhost:9092</span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Topic:</strong> <span id="topic-name">smart_home_data</span>
+                    </div>
+                    <button class="btn btn-primary" id="test-connection">Test Connection</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Stream Statistics</h5>
+                    <div class="mb-2">
+                        <strong>Messages Processed:</strong> <span id="messages-count">0</span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Processing Rate:</strong> <span id="processing-rate">0</span> msg/sec
+                    </div>
+                    <div class="mb-2">
+                        <strong>Last Message:</strong> <span id="last-message-time">-</span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Consumer Group:</strong> <span id="consumer-group">smart_home_group</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Stream -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Live Message Stream</h5>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Building ID</th>
+                                    <th>Temperature</th>
+                                    <th>Humidity</th>
+                                    <th>Power Usage</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="message-stream">
+                                <!-- Messages will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Consumer Controls -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Consumer Controls</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Consumer Status</label>
+                        <div class="input-group">
+                            <button class="btn btn-success" id="start-consumer">Start Consumer</button>
+                            <button class="btn btn-danger" id="stop-consumer">Stop Consumer</button>
+                            <button class="btn btn-warning" id="reset-consumer">Reset Offset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Error Log</h5>
+                    <div class="alert alert-danger mb-0 d-none" id="error-log">
+                        No errors reported
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    let consumerRunning = false;
+    let messageCount = 0;
+    let startTime = Date.now();
+
+    function updateConnectionStatus(status, connected) {
+        $('#connection-status').text(status);
+        $('#connection-indicator').css('background-color', connected ? '#28a745' : '#dc3545');
+    }
+
+    function updateProcessingRate() {
+        const elapsedSeconds = (Date.now() - startTime) / 1000;
+        const rate = (messageCount / elapsedSeconds).toFixed(2);
+        $('#processing-rate').text(rate);
+    }
+
+    function addMessageToStream(message) {
+        const row = `
+            <tr>
+                <td>${message.timestamp}</td>
+                <td>${message.building_id}</td>
+                <td>${message.temperature.toFixed(1)}°C</td>
+                <td>${message.humidity.toFixed(1)}%</td>
+                <td>${message.power_usage.toFixed(1)}W</td>
+                <td><span class="badge bg-success">Processed</span></td>
+            </tr>
+        `;
+        
+        $('#message-stream').prepend(row);
+        
+        // Keep only last 10 messages
+        if ($('#message-stream tr').length > 10) {
+            $('#message-stream tr:last').remove();
+        }
+
+        messageCount++;
+        $('#messages-count').text(messageCount);
+        $('#last-message-time').text(message.timestamp);
+        updateProcessingRate();
+    }
+
+    function showError(error) {
+        $('#error-log').text(error).removeClass('d-none');
+    }
+
+    function hideError() {
+        $('#error-log').addClass('d-none');
+    }
+
+    // Test Kafka connection
+    $('#test-connection').click(function() {
+        updateConnectionStatus('Testing connection...', false);
+        
+        $.ajax({
+            url: '/api/test-kafka-connection',
+            method: 'POST',
+            success: function(response) {
+                if (response.connected) {
+                    updateConnectionStatus('Connected', true);
+                } else {
+                    updateConnectionStatus('Disconnected: ' + response.error, false);
+                    showError(response.error);
+                }
+            },
+            error: function(xhr, status, error) {
+                updateConnectionStatus('Connection error', false);
+                showError(error);
+            }
+        });
+    });
+
+    // Start consumer
+    $('#start-consumer').click(function() {
+        if (consumerRunning) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/start-kafka-consumer',
+            method: 'POST',
+            success: function(response) {
+                if (response.success) {
+                    consumerRunning = true;
+                    $(this).prop('disabled', true);
+                    $('#stop-consumer').prop('disabled', false);
+                    hideError();
+                    pollMessages();
+                } else {
+                    showError(response.error);
+                }
+            },
+            error: function(xhr, status, error) {
+                showError(error);
+            }
+        });
+    });
+
+    // Stop consumer
+    $('#stop-consumer').click(function() {
+        if (!consumerRunning) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/stop-kafka-consumer',
+            method: 'POST',
+            success: function(response) {
+                consumerRunning = false;
+                $('#start-consumer').prop('disabled', false);
+                $(this).prop('disabled', true);
+            }
+        });
+    });
+
+    // Reset consumer offset
+    $('#reset-consumer').click(function() {
+        if (consumerRunning) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/reset-kafka-consumer',
+            method: 'POST',
+            success: function(response) {
+                if (response.success) {
+                    messageCount = 0;
+                    startTime = Date.now();
+                    $('#messages-count').text('0');
+                    $('#processing-rate').text('0');
+                    $('#last-message-time').text('-');
+                    $('#message-stream').empty();
+                    hideError();
+                } else {
+                    showError(response.error);
+                }
+            }
+        });
+    });
+
+    // Poll for new messages
+    function pollMessages() {
+        if (!consumerRunning) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/kafka-messages',
+            method: 'GET',
+            success: function(response) {
+                if (response.messages) {
+                    response.messages.forEach(addMessageToStream);
+                }
+                setTimeout(pollMessages, 1000);
+            },
+            error: function(xhr, status, error) {
+                showError(error);
+                consumerRunning = false;
+                $('#start-consumer').prop('disabled', false);
+                $('#stop-consumer').prop('disabled', true);
+            }
+        });
+    }
+
+    // Initial connection test
+    $('#test-connection').click();
+});
+</script>
+{% endblock %}

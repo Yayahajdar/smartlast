@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block content %}
+<body>
+    <div class="container-fluid py-4">
+        <div id="error-container" class="alert alert-danger d-none" role="alert"></div>
+        <h1 class="mb-4">Smart Home Analytics Dashboard</h1>
+        
+        <!-- Key Metrics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="avg-temp"></div>
+                        <div class="metric-label">Average Indoor Temperature</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="avg-humidity"></div>
+                        <div class="metric-label">Average Humidity</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="energy-efficiency"></div>
+                        <div class="metric-label">Energy Efficiency Score</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="prediction-accuracy"></div>
+                        <div class="metric-label">ML Model R² Score</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row">
+            <!-- Temperature Trends -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Temperature Trends</h5>
+                        <div id="temp-chart"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Temperature Prediction -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">24h Temperature Prediction</h5>
+                        <div id="prediction-chart"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Second Row of Charts -->
+        <div class="row mt-4">
+            <!-- Energy Usage -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Energy Usage by Room Count</h5>
+                        <div id="energy-chart"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Feature Importance -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">ML Feature Importance</h5>
+                        <div id="feature-importance-chart"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showError(message) {
+            $('#error-container').text(message).removeClass('d-none');
+        }
+
+        function hideError() {
+            $('#error-container').addClass('d-none');
+        }
+
+        function updateDashboard() {
+            hideError();
+            $.ajax({
+                url: '/api/dashboard-data',
+                method: 'GET',
+                success: function(data) {
+                    if (data.error) {
+                        showError(data.error);
+                        return;
+                    }
+                    
+                    // Update metrics
+                    $('#avg-temp').text(data.metrics.avg_temp.toFixed(1) + '°C');
+                    $('#avg-humidity').text(data.metrics.avg_humidity.toFixed(1) + '%');
+                    $('#energy-efficiency').text(data.metrics.energy_efficiency.toFixed(1) + '%');
+                    $('#prediction-accuracy').text((data.metrics.model_accuracy * 100).toFixed(1) + '%');
+                    
+                    // Temperature chart
+                    const tempTrace1 = {
+                        x: data.temperature_data.timestamps,
+                        y: data.temperature_data.indoor_temps,
+                        name: 'Indoor Temperature',
+                        type: 'scatter'
+                    };
+                    
+                    const tempTrace2 = {
+                        x: data.temperature_data.timestamps,
+                        y: data.temperature_data.outdoor_temps,
+                        name: 'Outdoor Temperature',
+                        type: 'scatter'
+                    };
+                    
+                    Plotly.newPlot('temp-chart', [tempTrace1, tempTrace2], {
+                        title: 'Temperature Trends',
+                        xaxis: { title: 'Time' },
+                        yaxis: { title: 'Temperature (°C)' }
+                    });
+                    
+                    // Prediction chart
+                    const predTrace = {
+                        x: data.predictions.timestamps,
+                        y: data.predictions.temperatures,
+                        type: 'scatter',
+                        name: 'Predicted Temperature'
+                    };
+                    
+                    Plotly.newPlot('prediction-chart', [predTrace], {
+                        title: '24h Temperature Prediction',
+                        xaxis: { title: 'Time' },
+                        yaxis: { title: 'Temperature (°C)' }
+                    });
+                    
+                    // Energy usage chart
+                    const energyTrace = {
+                        x: data.energy_data.room_counts,
+                        y: data.energy_data.power_usage,
+                        type: 'bar',
+                        name: 'Power Usage'
+                    };
+                    
+                    Plotly.newPlot('energy-chart', [energyTrace], {
+                        title: 'Energy Usage by Room Count',
+                        xaxis: { title: 'Number of Rooms' },
+                        yaxis: { title: 'Power Usage (W)' }
+                    });
+                    
+                    // Feature importance chart
+                    const features = Object.keys(data.feature_importance);
+                    const importance = Object.values(data.feature_importance);
+                    
+                    const featureTrace = {
+                        y: features,
+                        x: importance,
+                        type: 'bar',
+                        orientation: 'h'
+                    };
+                    
+                    Plotly.newPlot('feature-importance-chart', [featureTrace], {
+                        title: 'Feature Importance',
+                        xaxis: { title: 'Importance' },
+                        yaxis: { title: 'Feature' }
+                    });
+                },
+                error: function(xhr, status, error) {
+                    showError('Error fetching dashboard data: ' + error);
+                }
+            });
+            console.log('Updating dashboard...');
+            $.ajax({
+                url: '/api/dashboard-data',
+                method: 'GET',
+                success: function(data) {
+                    console.log('Received data:', data);
+                    if (data.error) {
+                        showError(data.error);
+                        return;
+                    }
+                    
+                    hideError();
+                    
+                    // Update metrics
+                    $('#avg-temp').text(data.metrics.avg_temp.toFixed(1) + '°C');
+                    $('#avg-humidity').text(data.metrics.avg_humidity.toFixed(1) + '%');
+                    $('#energy-efficiency').text(data.metrics.energy_efficiency.toFixed(1));
+                    $('#prediction-accuracy').text((data.metrics.model_accuracy).toFixed(3));
+
+                    // Temperature Trends Chart
+                    Plotly.newPlot('temp-chart', [{
+                        x: data.temperature_data.timestamps,
+                        y: data.temperature_data.indoor_temps,
+                        name: 'Indoor',
+                        type: 'scatter',
+                        line: {color: '#1f77b4'}
+                    }, {
+                        x: data.temperature_data.timestamps,
+                        y: data.temperature_data.outdoor_temps,
+                        name: 'Outdoor',
+                        type: 'scatter',
+                        line: {color: '#ff7f0e'}
+                    }], {
+                        margin: {t: 10},
+                        height: 300,
+                        xaxis: {title: 'Time'},
+                        yaxis: {title: 'Temperature (°C)'}
+                    });
+
+                    // Prediction Chart
+                    Plotly.newPlot('prediction-chart', [{
+                        x: data.predictions.timestamps,
+                        y: data.predictions.temperatures,
+                        type: 'scatter',
+                        line: {color: '#2ca02c'}
+                    }], {
+                        margin: {t: 10},
+                        height: 300,
+                        xaxis: {title: 'Time'},
+                        yaxis: {title: 'Predicted Temperature (°C)'}
+                    });
+
+                    // Energy Usage Chart
+                    Plotly.newPlot('energy-chart', [{
+                        x: data.energy_data.room_counts,
+                        y: data.energy_data.power_usage,
+                        type: 'bar',
+                        marker: {color: '#d62728'}
+                    }], {
+                        margin: {t: 10},
+                        height: 300,
+                        xaxis: {title: 'Number of Rooms'},
+                        yaxis: {title: 'Average Power Usage'}
+                    });
+
+                    // Feature Importance Chart
+                    Plotly.newPlot('feature-importance-chart', [{
+                        y: Object.keys(data.feature_importance),
+                        x: Object.values(data.feature_importance),
+                        type: 'bar',
+                        orientation: 'h',
+                        marker: {color: '#9467bd'}
+                    }], {
+                        margin: {l: 150, t: 10},
+                        height: 300,
+                        xaxis: {title: 'Importance Score'}
+                    });
+                }
+            });
+        }
+
+        // Update dashboard every 5 minutes
+        updateDashboard();
+        setInterval(updateDashboard, 300000);
+    </script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<style>
+    .card {
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .metric-value {
+        font-size: 2em;
+        font-weight: bold;
+    }
+    .metric-label {
+        color: #666;
+        font-size: 0.9em;
+    }
+</style>
+{% endblock %}

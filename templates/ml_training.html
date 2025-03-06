@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="mb-4">ML Training & Testing</h1>
+    
+    <!-- Training Controls -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Model Training</h5>
+                    <form id="training-form">
+                        <div class="mb-3">
+                            <label class="form-label">Training Data Split</label>
+                            <input type="range" class="form-range" id="train-split" min="50" max="90" value="80">
+                            <div class="text-muted">Training set: <span id="train-split-value">80</span>%</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Model Parameters</label>
+                            <div class="input-group mb-2">
+                                <span class="input-group-text">Trees</span>
+                                <input type="number" class="form-control" id="n-estimators" value="100" min="10" max="1000">
+                            </div>
+                            <div class="input-group">
+                                <span class="input-group-text">Max Depth</span>
+                                <input type="number" class="form-control" id="max-depth" value="10" min="3" max="50">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Train Model</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Training Progress</h5>
+                    <div class="progress mb-3">
+                        <div class="progress-bar" role="progressbar" style="width: 0%" id="training-progress"></div>
+                    </div>
+                    <div id="training-status" class="text-muted">Ready to train</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Model Performance -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Model Metrics</h5>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <td>R² Score</td>
+                                <td id="r2-score">-</td>
+                            </tr>
+                            <tr>
+                                <td>Mean Squared Error</td>
+                                <td id="mse">-</td>
+                            </tr>
+                            <tr>
+                                <td>Root Mean Squared Error</td>
+                                <td id="rmse">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Feature Importance</h5>
+                    <div id="feature-importance-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prediction Testing -->
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Test Predictions</h5>
+        <form id="prediction-form" class="mb-3">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Outdoor Temperature (°C)</label>
+                        <input type="number" class="form-control" id="outdoor-temp" value="20" step="0.1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Humidity (%)</label>
+                        <input type="number" class="form-control" id="humidity" value="50" min="0" max="100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Sunlight (hours)</label>
+                        <input type="number" class="form-control" id="sunlight" value="5" min="0" max="24">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Room Count</label>
+                        <input type="number" class="form-control" id="room-count" value="4" min="1">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Surface (m²)</label>
+                        <input type="number" class="form-control" id="surface-m2" value="100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Volume (m³)</label>
+                        <input type="number" class="form-control" id="surface-m3" value="300">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Power (W)</label>
+                        <input type="number" class="form-control" id="power" value="1000">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">DPE Value</label>
+                        <input type="number" class="form-control" id="dpe-value" value="200">
+                    </div>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Predict Temperature</button>
+        </form>
+        <div id="prediction-result" class="alert alert-info d-none">
+            Predicted Indoor Temperature: <span id="predicted-temp">-</span>°C
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+$(document).ready(function() {
+    // Update train split value display
+    $('#train-split').on('input', function() {
+        $('#train-split-value').text($(this).val());
+    });
+    
+    // Handle form submission
+    $('#training-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        // Update UI
+        $('#training-status').text('Training in progress...');
+        $('#training-progress').css('width', '50%');
+        
+        // Get form values
+        const params = {
+            n_estimators: $('#n-estimators').val(),
+            max_depth: $('#max-depth').val(),
+            train_split: $('#train-split').val()
+        };
+        
+        // Send training request
+        $.ajax({
+            url: '/api/train-model',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(params),
+            success: function(response) {
+                if (response.error) {
+                    $('#training-status').text('Error: ' + response.error);
+                    $('#training-progress').css('width', '0%');
+                    return;
+                }
+                
+                // Update progress
+                $('#training-progress').css('width', '100%');
+                $('#training-status').text('Training complete!');
+                
+                // Update metrics
+                const metrics = response.metrics;
+                $('#r2-score').text((metrics.r2 * 100).toFixed(2) + '%');
+                $('#mse').text(metrics.mse.toFixed(4));
+                $('#rmse').text(metrics.rmse.toFixed(4));
+                
+                // Create feature importance chart
+                const featureImportance = metrics.feature_importance;
+                const features = Object.keys(featureImportance);
+                const importance = Object.values(featureImportance);
+                
+                const data = [{
+                    x: importance,
+                    y: features,
+                    type: 'bar',
+                    orientation: 'h',
+                    marker: {
+                        color: 'rgb(55, 83, 109)'
+                    }
+                }];
+                
+                const layout = {
+                    title: 'Feature Importance',
+                    xaxis: { title: 'Importance' },
+                    margin: { l: 150 },
+                    height: 400
+                };
+                
+                Plotly.newPlot('feature-importance-chart', data, layout);
+            },
+            error: function(xhr, status, error) {
+                $('#training-status').text('Error: ' + error);
+                $('#training-progress').css('width', '0%');
+            }
+        });
+    });
+    // Update training split value display
+    $('#train-split').on('input', function() {
+        $('#train-split-value').text($(this).val());
+    });
+
+    // Handle form submission
+    $('#training-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        const data = {
+            train_split: $('#train-split').val() / 100,
+            n_estimators: $('#n-estimators').val(),
+            max_depth: $('#max-depth').val()
+        };
+
+        // Show training in progress
+        $('#training-status').text('Training in progress...');
+        $('#training-progress').css('width', '50%');
+
+        $.ajax({
+            url: '/api/train-model',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(response) {
+                // Update metrics
+                $('#r2-score').text(response.metrics.r2.toFixed(3));
+                $('#mse').text(response.metrics.mse.toFixed(3));
+                $('#rmse').text(response.metrics.rmse.toFixed(3));
+
+                // Update feature importance chart
+                const features = Object.keys(response.feature_importance);
+                const importance = Object.values(response.feature_importance);
+
+                Plotly.newPlot('feature-importance-chart', [{
+                    y: features,
+                    x: importance,
+                    type: 'bar',
+                    orientation: 'h'
+                }], {
+                    margin: { l: 150, t: 10 },
+                    height: 300,
+                    xaxis: { title: 'Importance Score' }
+                });
+
+                // Update prediction chart
+                Plotly.newPlot('prediction-chart', [{
+                    x: response.test_data.timestamps,
+                    y: response.test_data.actual,
+                    name: 'Actual',
+                    type: 'scatter'
+                }, {
+                    x: response.test_data.timestamps,
+                    y: response.test_data.predicted,
+                    name: 'Predicted',
+                    type: 'scatter'
+                }], {
+                    margin: { t: 10 },
+                    height: 300,
+                    xaxis: { title: 'Time' },
+                    yaxis: { title: 'Temperature (°C)' }
+                });
+
+                // Show completion
+                $('#training-status').text('Training complete');
+                $('#training-progress').css('width', '100%');
+            },
+            error: function(xhr, status, error) {
+                $('#training-status').text('Error: ' + error);
+                $('#training-progress').css('width', '0%');
+            }
+        });
+    });
+});
+// Handle prediction form submission
+$('#prediction-form').on('submit', function(e) {
+    e.preventDefault();
+    
+    const data = {
+        outdoor_temp: parseFloat($('#outdoor-temp').val()),
+        humidity: parseFloat($('#humidity').val()),
+        sunlight: parseFloat($('#sunlight').val()),
+        room_count: parseInt($('#room-count').val()),
+        surface_m2: parseFloat($('#surface-m2').val()),
+        surface_m3: parseFloat($('#surface-m3').val()),
+        power: parseFloat($('#power').val()),
+        dpe_value: parseFloat($('#dpe-value').val())
+    };
+    
+    $.ajax({
+        url: '/api/test-prediction',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function(response) {
+            if (response.error) {
+                alert('Error: ' + response.error);
+                return;
+            }
+            
+            $('#prediction-result').removeClass('d-none');
+            $('#predicted-temp').text(response.predicted_temp.toFixed(1));
+        },
+        error: function(xhr, status, error) {
+            alert('Error making prediction: ' + error);
+        }
+    });
+});
+</script>
+{% endblock %}

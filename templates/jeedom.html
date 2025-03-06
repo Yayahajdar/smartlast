@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Jeedom Integration</h1>
+    
+    <!-- Device Tree Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Device Tree</h6>
+        </div>
+        <div class="card-body">
+            <div id="device-tree">
+                Loading devices...
+            </div>
+        </div>
+    </div>
+    
+    <!-- Device Details Card -->
+    <div class="card shadow mb-4 d-none" id="device-details">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Device Details</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h4 id="device-name"></h4>
+                    <p id="device-status"></p>
+                    <div id="device-commands"></div>
+                </div>
+                <div class="col-md-6">
+                    <div id="command-history-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card shadow mb-4 d-none" id="command-history-card">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Command History</h6>
+            <div class="form-inline">
+                <div class="form-group mr-2">
+                    <label class="mr-2">From:</label>
+                    <input type="datetime-local" class="form-control form-control-sm" id="history-start-date">
+                </div>
+                <div class="form-group mr-2">
+                    <label class="mr-2">To:</label>
+                    <input type="datetime-local" class="form-control form-control-sm" id="history-end-date">
+                </div>
+                <button class="btn btn-primary btn-sm" id="refresh-history">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="command-history-chart"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+$(document).ready(function() {
+    // Load device tree
+    function loadDeviceTree() {
+        console.log('Loading device tree...');
+        $.ajax({
+            url: '/api/jeedom/devices',
+            method: 'GET',
+            success: function(data) {
+                console.log('Received data:', data);
+                let html = '';
+                data.forEach(function(category) {
+                    html += `<div class="mb-3">
+                        <h5>${category.name}</h5>`;
+                    
+                    category.eqLogics.forEach(function(device) {
+                        html += `<div class="ml-4 mb-2">
+                            <a href="#" class="device-link" data-id="${device.id}">
+                                ${device.name}
+                            </a>
+                            <span class="text-muted ml-2">Last seen: ${device.status.lastCommunication}</span>
+                        </div>`;
+                    });
+                    
+                    html += '</div>';
+                });
+                
+                $('#device-tree').html(html);
+            },
+            error: function(xhr, status, error) {
+                console.error('Error loading devices:', error);
+                console.error('Response:', xhr.responseText);
+                $('#device-tree').html(`<div class="alert alert-danger">
+                    Error loading devices: ${error}<br>
+                    Details: ${xhr.responseText}
+                </div>`);
+            }
+        });
+    }
+    
+    // Load device details
+    function loadDeviceDetails(deviceId) {
+        $.ajax({
+            url: '/api/jeedom/device/' + deviceId,
+            method: 'GET',
+            success: function(device) {
+                if (device.error) {
+                    alert('Error loading device details: ' + device.error);
+                    return;
+                }
+                
+                $('#device-details').removeClass('d-none');
+                $('#device-name').text(device.name);
+                $('#device-status').text('Last Communication: ' + device.status.lastCommunication);
+                
+                let commandsHtml = '<div class="list-group">';
+                device.cmds.forEach(function(cmd) {
+                    commandsHtml += `
+                        <div class="list-group-item">
+                            <h6>${cmd.name}</h6>
+                            <p class="mb-0">
+                                Value: ${cmd.state || '-'} ${cmd.unite || ''}
+                                <button class="btn btn-sm btn-primary float-right view-history" 
+                                        data-id="${cmd.id}" 
+                                        data-name="${cmd.name}">
+                                    View History
+                                </button>
+                            </p>
+                        </div>`;
+                });
+                commandsHtml += '</div>';
+                
+                $('#device-commands').html(commandsHtml);
+                
+                // Clear previous chart
+                $('#command-history-chart').empty();
+                $('#command-history-card').addClass('d-none');
+            },
+            error: function(xhr, status, error) {
+                alert('Error loading device details: ' + error);
+            }
+        });
+    }
+    
+    // Load command history with date range
+    function loadCommandHistory(cmdId, cmdName) {
+        // Set default date range (last 24 hours)
+        if (!$('#history-start-date').val()) {
+            const end = new Date();
+            const start = new Date(end);
+            start.setDate(start.getDate() - 1);
+            
+            $('#history-end-date').val(end.toISOString().slice(0, 16));
+            $('#history-start-date').val(start.toISOString().slice(0, 16));
+        }
+        
+        const startDate = $('#history-start-date').val();
+        const endDate = $('#history-end-date').val();
+        
+        $('#command-history-chart').html('<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading history...</div>');
+        $('#command-history-card').removeClass('d-none');
+        
+        $.ajax({
+            url: '/api/jeedom/command/' + cmdId + '/history',
+            method: 'GET',
+            data: {
+                start_date: startDate ? startDate.replace('T', ' ') : '',
+                end_date: endDate ? endDate.replace('T', ' ') : ''
+            },
+            success: function(response) {
+                if (response.error) {
+                    let errorHtml = `<div class="alert alert-danger">
+                        <h5>${response.error}</h5>
+                        <p>Command: ${response.command_name || 'Unknown'}</p>`;
+                    if (response.suggestion) {
+                        errorHtml += `<p class="mt-2">${response.suggestion}</p>`;
+                    }
+                    errorHtml += `</div>`;
+                    $('#command-history-chart').html(errorHtml);
+                    return;
+                }
+                
+                if (!response || response.length === 0) {
+                    $('#command-history-chart').html(
+                        '<div class="alert alert-info">No history data available for this command in the selected time range.</div>'
+                    );
+                    return;
+                }
+                
+                const timestamps = response.map(h => h.datetime);
+                const values = response.map(h => h.value);
+                
+                const data = [{
+                    x: timestamps,
+                    y: values,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: cmdName,
+                    line: {
+                        color: 'rgb(55, 83, 109)',
+                        width: 2
+                    },
+                    marker: {
+                        size: 6,
+                        color: 'rgb(55, 83, 109)'
+                    }
+                }];
+                
+                const layout = {
+                    title: {
+                        text: cmdName + ' History',
+                        font: { size: 18 }
+                    },
+                    xaxis: { 
+                        title: 'Time',
+                        type: 'date',
+                        tickformat: '%Y-%m-%d %H:%M',
+                        showgrid: true
+                    },
+                    yaxis: { 
+                        title: 'Value',
+                        showgrid: true
+                    },
+                    height: 400,
+                    margin: { l: 60, r: 30, t: 50, b: 50 },
+                    showlegend: false,
+                    plot_bgcolor: 'rgb(250,250,250)',
+                    paper_bgcolor: 'white'
+                };
+                
+                const config = {
+                    responsive: true,
+                    displayModeBar: true,
+                    displaylogo: false,
+                    modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                    toImageButtonOptions: {
+                        format: 'png',
+                        filename: cmdName + '_history'
+                    }
+                };
+                
+                Plotly.newPlot('command-history-chart', data, layout, config);
+            },
+            error: function(xhr, status, error) {
+                console.error('Error:', error);
+                console.error('Response:', xhr.responseText);
+                
+                let errorMessage = error;
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.error) {
+                        errorMessage = response.error;
+                    }
+                } catch (e) {
+                    // Use original error message
+                }
+                
+                $('#command-history-chart').html(
+                    '<div class="alert alert-danger">Error loading command history: ' + errorMessage + '</div>'
+                );
+            }
+        });
+    }
+    
+    // Event handlers
+    $(document).on('click', '.device-link', function(e) {
+        e.preventDefault();
+        const deviceId = $(this).data('id');
+        loadDeviceDetails(deviceId);
+    });
+    
+    $(document).on('click', '.view-history', function(e) {
+        e.preventDefault();
+        const cmdId = $(this).data('id');
+        const cmdName = $(this).data('name');
+        loadCommandHistory(cmdId, cmdName);
+    });
+    
+    $(document).on('click', '#refresh-history', function(e) {
+        e.preventDefault();
+        const activeCmd = $('.view-history.active');
+        if (activeCmd.length) {
+            loadCommandHistory(activeCmd.data('id'), activeCmd.data('name'));
+        }
+    });
+    
+    $(document).on('click', '.view-history', function() {
+        $('.view-history').removeClass('active');
+        $(this).addClass('active');
+    });
+    
+    // Initial load
+    loadDeviceTree();
+});
+</script>
+{% endblock %}

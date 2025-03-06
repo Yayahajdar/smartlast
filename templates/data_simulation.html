@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h1 class="mb-4">Data Simulation Controls</h1>
+    
+    <!-- Simulation Controls -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Simulation Parameters</h5>
+                    <form id="simulation-form">
+                        <div class="mb-3">
+                            <label class="form-label">Simulation Duration (hours)</label>
+                            <input type="number" class="form-control" id="duration" value="24" min="1" max="168">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Data Generation Interval (minutes)</label>
+                            <input type="number" class="form-control" id="interval" value="5" min="1" max="60">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Number of Buildings</label>
+                            <input type="number" class="form-control" id="building-count" value="10" min="1" max="100">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Start Simulation</button>
+                        <button type="button" class="btn btn-danger" id="stop-simulation">Stop Simulation</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Simulation Status</h5>
+                    <div class="progress mb-3">
+                        <div class="progress-bar" role="progressbar" style="width: 0%" id="simulation-progress"></div>
+                    </div>
+                    <div id="simulation-status" class="text-muted">Ready to start</div>
+                    <div class="mt-3">
+                        <strong>Records Generated:</strong> <span id="records-count">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Real-time Data -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Real-time Data Stream</h5>
+                    <div id="realtime-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    let simulationRunning = false;
+    let dataPoints = {
+        timestamps: [],
+        temperatures: [],
+        humidity: [],
+        power: []
+    };
+
+    // Initialize real-time chart
+    Plotly.newPlot('realtime-chart', [
+        {
+            name: 'Temperature',
+            x: [],
+            y: [],
+            type: 'scatter',
+            line: {color: '#1f77b4'}
+        },
+        {
+            name: 'Humidity',
+            x: [],
+            y: [],
+            type: 'scatter',
+            line: {color: '#ff7f0e'},
+            yaxis: 'y2'
+        },
+        {
+            name: 'Power Usage',
+            x: [],
+            y: [],
+            type: 'scatter',
+            line: {color: '#2ca02c'},
+            yaxis: 'y3'
+        }
+    ], {
+        margin: {t: 10},
+        height: 400,
+        xaxis: {title: 'Time'},
+        yaxis: {title: 'Temperature (°C)', side: 'left'},
+        yaxis2: {title: 'Humidity (%)', side: 'right', overlaying: 'y', position: 0.95},
+        yaxis3: {title: 'Power (W)', side: 'right', overlaying: 'y', position: 0.85}
+    });
+
+    // Handle form submission
+    $('#simulation-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (simulationRunning) {
+            return;
+        }
+
+        const data = {
+            duration: $('#duration').val(),
+            interval: $('#interval').val(),
+            building_count: $('#building-count').val()
+        };
+
+        simulationRunning = true;
+        $('#simulation-status').text('Simulation running...');
+        $('#simulation-progress').css('width', '0%');
+        
+        // Reset data points
+        dataPoints = {
+            timestamps: [],
+            temperatures: [],
+            humidity: [],
+            power: []
+        };
+
+        // Start simulation
+        $.ajax({
+            url: '/api/start-simulation',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            success: function(response) {
+                if (response.success) {
+                    pollSimulationData();
+                } else {
+                    simulationRunning = false;
+                    $('#simulation-status').text('Error: ' + response.error);
+                }
+            },
+            error: function(xhr, status, error) {
+                simulationRunning = false;
+                $('#simulation-status').text('Error: ' + error);
+            }
+        });
+    });
+
+    // Handle stop simulation
+    $('#stop-simulation').click(function() {
+        if (!simulationRunning) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/stop-simulation',
+            method: 'POST',
+            success: function(response) {
+                simulationRunning = false;
+                $('#simulation-status').text('Simulation stopped');
+            }
+        });
+    });
+
+    // Poll for simulation data
+    function pollSimulationData() {
+        if (!simulationRunning) {
+            return;
+        }
+
+        $.ajax({
+            url: '/api/simulation-data',
+            method: 'GET',
+            success: function(response) {
+                // Update progress
+                $('#simulation-progress').css('width', response.progress + '%');
+                $('#records-count').text(response.total_records);
+
+                if (response.complete) {
+                    simulationRunning = false;
+                    $('#simulation-status').text('Simulation complete');
+                    return;
+                }
+
+                // Update charts
+                if (response.data) {
+                    dataPoints.timestamps.push(response.data.timestamp);
+                    dataPoints.temperatures.push(response.data.temperature);
+                    dataPoints.humidity.push(response.data.humidity);
+                    dataPoints.power.push(response.data.power);
+
+                    // Keep only last 100 points
+                    if (dataPoints.timestamps.length > 100) {
+                        dataPoints.timestamps.shift();
+                        dataPoints.temperatures.shift();
+                        dataPoints.humidity.shift();
+                        dataPoints.power.shift();
+                    }
+
+                    Plotly.update('realtime-chart', {
+                        x: [dataPoints.timestamps, dataPoints.timestamps, dataPoints.timestamps],
+                        y: [dataPoints.temperatures, dataPoints.humidity, dataPoints.power]
+                    });
+                }
+
+                // Continue polling
+                setTimeout(pollSimulationData, 1000);
+            },
+            error: function(xhr, status, error) {
+                simulationRunning = false;
+                $('#simulation-status').text('Error: ' + error);
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
